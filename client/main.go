@@ -42,9 +42,10 @@ var globalKey string
 var keyMutex sync.RWMutex
 
 const (
-	defaultWorkers   = 8
-	defaultChunkSize = 4 * 1024 * 1024 // 4 MiB per range request
-	maxParallelTasks = 3               // queue cap for simultaneous downloads
+	defaultWorkers    = 8
+	defaultChunkSize  = 4 * 1024 * 1024 // 4 MiB per range request
+	maxParallelTasks  = 3               // queue cap for simultaneous downloads
+	connectionTimeout = 3 * time.Second // 连接超时时间
 )
 
 var taskSemaphore = make(chan struct{}, maxParallelTasks)
@@ -86,10 +87,27 @@ func getSession(address string) (*smux.Session, error) {
 		return nil, err
 	}
 	common.ConfigKCP(kcpConn)
+
+	// 设置连接超时，快速检测密钥是否正确
+	kcpConn.SetDeadline(time.Now().Add(connectionTimeout))
+
 	session, err := smux.Client(kcpConn, common.SmuxConfig())
 	if err != nil {
+		kcpConn.Close()
 		return nil, err
 	}
+
+	// 尝试打开一个流来验证连接是否正常（密钥是否匹配）
+	testStream, err := session.OpenStream()
+	if err != nil {
+		session.Close()
+		return nil, fmt.Errorf("connection failed (possibly wrong key): %w", err)
+	}
+	testStream.Close()
+
+	// 连接成功，清除超时限制
+	kcpConn.SetDeadline(time.Time{})
+
 	globalSession = session
 	return session, nil
 }
