@@ -1,0 +1,122 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # Server builds (no CGO)
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            target: server
+            cgo: 0
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            target: server
+            cgo: 0
+          - os: ubuntu-latest
+            goos: windows
+            goarch: amd64
+            target: server
+            cgo: 0
+          - os: ubuntu-latest
+            goos: windows
+            goarch: arm64
+            target: server
+            cgo: 0
+          # Client builds (needs CGO for GUI)
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            target: client
+            cgo: 1
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            target: client
+            cgo: 1
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      # Linux dependencies for Fyne GUI
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest' && matrix.target == 'client'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1-mesa-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxi-dev \
+            libxxf86vm-dev \
+            xorg-dev
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          EXT=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            EXT=".exe"
+          fi
+          OUTPUT="${{ matrix.target }}-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}"
+          go build -ldflags="-s -w" -o "dist/${OUTPUT}" ./${{ matrix.target }}
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
