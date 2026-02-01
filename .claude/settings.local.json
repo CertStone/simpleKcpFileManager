@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go mod tidy:*)",
+      "Bash(go build:*)",
+      "mcp__context7__resolve-library-id",
+      "WebSearch",
+      "mcp__context7__query-docs",
+      "mcp__web-search-prime__webSearchPrime",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(test:*)"
+    ]
+  }
+}

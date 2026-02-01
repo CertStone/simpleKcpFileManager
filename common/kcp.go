@@ -1,7 +1,8 @@
 package common
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
+	"fmt"
 	"net"
 
 	"github.com/xtaci/kcp-go/v5"
@@ -9,29 +10,35 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 )
 
-// 定义默认加密密钥和盐值
+// 定义加密盐值
 const (
-	Salt       = "kcp-file-transfer"
-	DefaultKey = "your-secret-key"
+	Salt = "kcp-file-transfer"
 )
 
-// IsDefaultKey 检查是否使用默认密钥
-func IsDefaultKey(key string) bool {
-	return key == "" || key == DefaultKey
+// hashKey 对输入密钥进行 SHA-256 哈希以提高安全性
+// 这样即使用户输入短密钥也能保证足够的密钥强度
+func hashKey(key string) string {
+	hash := sha256.Sum256([]byte(key))
+	return fmt.Sprintf("%x", hash)
 }
 
-// GetEffectiveKey 返回实际使用的密钥
-func GetEffectiveKey(key string) string {
+// ValidateKey 验证密钥是否有效
+func ValidateKey(key string) error {
 	if key == "" {
-		return DefaultKey
+		return fmt.Errorf("encryption key is required")
 	}
-	return key
+	return nil
 }
 
 // 生成加密块
 func GetBlockCrypt(key string) (kcp.BlockCrypt, error) {
-	effectiveKey := GetEffectiveKey(key)
-	pass := pbkdf2.Key([]byte(effectiveKey), []byte(Salt), 4096, 32, sha1.New)
+	if err := ValidateKey(key); err != nil {
+		return nil, err
+	}
+	// 先对输入密钥进行哈希，提高短密钥的安全性
+	hashedKey := hashKey(key)
+	// 使用 PBKDF2 从哈希后的密钥派生最终密钥
+	pass := pbkdf2.Key([]byte(hashedKey), []byte(Salt), 4096, 32, sha256.New)
 	return kcp.NewAESBlockCrypt(pass)
 }
 
