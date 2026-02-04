@@ -295,9 +295,7 @@ func (dt *DirectoryTree) loadDirectoryChildren(dirPath string) {
 		dt.treeMutex.Unlock()
 		// Schedule refresh on main thread
 		fyne.Do(func() {
-			if dt.mainWindow.window != nil && dt.mainWindow.window.Canvas() != nil {
-				dt.mainWindow.window.Canvas().Refresh(dt.tree)
-			}
+			dt.tree.Refresh()
 		})
 		return
 	}
@@ -323,9 +321,7 @@ func (dt *DirectoryTree) loadDirectoryChildren(dirPath string) {
 			dt.treeMutex.Unlock()
 			// Schedule refresh on main thread
 			fyne.Do(func() {
-				if dt.mainWindow.window != nil && dt.mainWindow.window.Canvas() != nil {
-					dt.mainWindow.window.Canvas().Refresh(dt.tree)
-				}
+				dt.tree.Refresh()
 			})
 			return
 		}
@@ -366,14 +362,110 @@ func (dt *DirectoryTree) loadDirectoryChildren(dirPath string) {
 
 		log.Printf("[DEBUG] loadDirectoryChildren: Stored %d children for key=%s", len(children), key)
 
-		// Refresh tree on UI thread via Canvas
+		// Refresh tree on UI thread
 		log.Printf("[DEBUG] loadDirectoryChildren: Calling tree.Refresh()")
 		fyne.Do(func() {
-			if dt.mainWindow.window != nil && dt.mainWindow.window.Canvas() != nil {
-				dt.mainWindow.window.Canvas().Refresh(dt.tree)
-			}
+			dt.tree.Refresh()
 		})
 		log.Printf("[DEBUG] loadDirectoryChildren: DONE for path=%s", dirPath)
+	}()
+}
+
+// loadDirectoryChildrenWithCallback loads children for a directory and calls callback when done
+func (dt *DirectoryTree) loadDirectoryChildrenWithCallback(dirPath string, callback func()) {
+	log.Printf("[DEBUG] loadDirectoryChildrenWithCallback: START for path=%s", dirPath)
+
+	if dt.mainWindow.client == nil || !dt.mainWindow.client.IsConnected() {
+		log.Printf("[DEBUG] loadDirectoryChildrenWithCallback: Not connected")
+		dt.treeMutex.Lock()
+		delete(dt.loadingNodes, dirPath)
+		dt.treeMutex.Unlock()
+		// Schedule refresh on main thread
+		fyne.Do(func() {
+			dt.tree.Refresh()
+		})
+		if callback != nil {
+			callback()
+		}
+		return
+	}
+
+	// Convert to relative path for API
+	relPath := strings.TrimPrefix(dirPath, "/")
+	if relPath == "/" {
+		relPath = ""
+	}
+	log.Printf("[DEBUG] loadDirectoryChildrenWithCallback: relPath=%s", relPath)
+
+	// Run in background
+	go func() {
+		log.Printf("[DEBUG] loadDirectoryChildrenWithCallback: Calling ListFiles for %s", relPath)
+		files, err := dt.mainWindow.client.ListFiles(relPath, false)
+
+		dt.treeMutex.Lock()
+		delete(dt.loadingNodes, dirPath)
+
+		if err != nil {
+			log.Printf("[DEBUG] loadDirectoryChildrenWithCallback: ListFiles failed - %v", err)
+			dt.treeData[dirPath] = []string{} // Empty on error
+			dt.treeMutex.Unlock()
+			// Schedule refresh on main thread
+			fyne.Do(func() {
+				dt.tree.Refresh()
+			})
+			if callback != nil {
+				callback()
+			}
+			return
+		}
+
+		log.Printf("[DEBUG] loadDirectoryChildrenWithCallback: Got %d files", len(files))
+
+		var children []string
+		for _, file := range files {
+			// Only add directories to the tree
+			if !file.IsDir {
+				continue
+			}
+
+			// Build full path for this child
+			var fullPath string
+			if dirPath == "/" || dirPath == "" {
+				fullPath = "/" + file.Name
+			} else {
+				fullPath = dirPath + "/" + file.Name
+			}
+
+			// Store item info
+			dt.treeItemMap[fullPath] = file
+
+			// Add to children
+			children = append(children, fullPath)
+
+			log.Printf("[DEBUG] loadDirectoryChildrenWithCallback: Added child %s (dir=%v)", fullPath, file.IsDir)
+		}
+
+		// Handle root path
+		key := dirPath
+		if key == "" {
+			key = "/"
+		}
+		dt.treeData[key] = children
+		dt.treeMutex.Unlock()
+
+		log.Printf("[DEBUG] loadDirectoryChildrenWithCallback: Stored %d children for key=%s", len(children), key)
+
+		// Refresh tree on UI thread
+		log.Printf("[DEBUG] loadDirectoryChildrenWithCallback: Calling tree.Refresh()")
+		fyne.Do(func() {
+			dt.tree.Refresh()
+		})
+		log.Printf("[DEBUG] loadDirectoryChildrenWithCallback: DONE for path=%s", dirPath)
+
+		// Call callback after loading is complete
+		if callback != nil {
+			callback()
+		}
 	}()
 }
 
@@ -395,16 +487,16 @@ func (dt *DirectoryTree) LoadTree() {
 	dt.loadingNodes = make(map[string]bool)
 	dt.treeMutex.Unlock()
 
-	// Load root level
+	// Load root level with callback to open root branch after loading
 	log.Printf("[DEBUG] LoadTree: Loading root level")
-	dt.loadDirectoryChildren("/")
-
-	// Open root branch to trigger display
-	fyne.Do(func() {
-		dt.tree.OpenBranch("/")
-		dt.tree.Refresh()
+	dt.loadDirectoryChildrenWithCallback("/", func() {
+		// Open root branch to trigger display after data is loaded
+		fyne.Do(func() {
+			dt.tree.OpenBranch("/")
+			dt.tree.Refresh()
+		})
+		log.Printf("[DEBUG] LoadTree: END")
 	})
-	log.Printf("[DEBUG] LoadTree: END")
 }
 
 // Refresh refreshes the directory tree
