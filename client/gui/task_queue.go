@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -464,6 +465,19 @@ func (tq *TaskQueue) AddUploadTask(localPath, remotePath string) error {
 	return nil
 }
 
+// AddUploadFolderTask adds a folder upload task (for pack transfer mode)
+func (tq *TaskQueue) AddUploadFolderTask(localPath, remotePath string) error {
+	task, err := tq.taskManager.AddUploadFolderTask(localPath, remotePath)
+	if err != nil {
+		return err
+	}
+	// Immediately add to UI
+	go func() {
+		tq.updateTaskWidget(task)
+	}()
+	return nil
+}
+
 // AddCompressTask adds a compress task to the queue
 func (tq *TaskQueue) AddCompressTask(paths []string, outputPath, format string) error {
 	task, err := tq.taskManager.AddCompressTask(paths, outputPath, format)
@@ -568,6 +582,13 @@ func (tq *TaskQueue) ShowUploadFolderDialog(localDir string) {
 
 // uploadFolder uploads a folder recursively
 func (tq *TaskQueue) uploadFolder(localPath, remotePath string) {
+	// Check if pack transfer is enabled - if so, upload folder as a single packed task
+	if tq.mainWindow.packTransferConfig.Enabled {
+		tq.uploadFolderPacked(localPath, remotePath)
+		return
+	}
+
+	// Pack transfer disabled - upload files individually
 	// Walk directory to get all files
 	var filesToUpload []struct {
 		local  string
@@ -630,8 +651,8 @@ func (tq *TaskQueue) uploadFolder(localPath, remotePath string) {
 
 		// Queue all files for upload
 		for _, file := range filesToUpload {
-			// Create remote directory
-			remoteDir := filepath.Dir(file.remote)
+			// Create remote directory (use path.Dir for Unix-style remote paths)
+			remoteDir := path.Dir(file.remote)
 			if err := tq.mainWindow.client.CreateDirectory(remoteDir); err != nil {
 				log.Printf("[DEBUG] Failed to create remote directory %s: %v", remoteDir, err)
 			}
@@ -643,6 +664,58 @@ func (tq *TaskQueue) uploadFolder(localPath, remotePath string) {
 
 		dialog.ShowInformation("Upload Started",
 			fmt.Sprintf("Uploading %d file(s) to %s", len(filesToUpload), remotePath),
+			tq.mainWindow.window)
+	}, tq.mainWindow.window)
+}
+
+// uploadFolderPacked uploads a folder as a single packed task (tar.gz compression)
+func (tq *TaskQueue) uploadFolderPacked(localPath, remotePath string) {
+	// Calculate total folder size for display
+	var totalSize int64
+	var fileCount int
+
+	err := filepath.Walk(localPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			totalSize += info.Size()
+			fileCount++
+		}
+		return nil
+	})
+
+	if err != nil {
+		dialog.ShowError(err, tq.mainWindow.window)
+		return
+	}
+
+	if fileCount == 0 {
+		dialog.ShowInformation("Empty Folder", "The selected folder is empty", tq.mainWindow.window)
+		return
+	}
+
+	// Show confirmation
+	folderName := filepath.Base(localPath)
+	sizeStr := formatSize(totalSize)
+	message := fmt.Sprintf("Upload folder '%s' (%d files, %s) to:\n%s\n\n(Pack transfer enabled: folder will be compressed before upload)",
+		folderName, fileCount, sizeStr, remotePath)
+
+	dialog.ShowConfirm("Upload Folder (Packed)", message, func(confirmed bool) {
+		if !confirmed {
+			return
+		}
+
+		// Add single upload task for the entire folder
+		// The UploadFilePacked function will handle compression
+		if err := tq.AddUploadFolderTask(localPath, remotePath); err != nil {
+			log.Printf("[DEBUG] Error queueing folder upload: %v", err)
+			dialog.ShowError(err, tq.mainWindow.window)
+			return
+		}
+
+		dialog.ShowInformation("Upload Started",
+			fmt.Sprintf("Uploading folder '%s' (packed) to %s", folderName, remotePath),
 			tq.mainWindow.window)
 	}, tq.mainWindow.window)
 }

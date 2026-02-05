@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -124,6 +125,40 @@ func (m *Manager) AddUploadTask(localPath, remotePath string) (*Task, error) {
 	return task, nil
 }
 
+// AddUploadFolderTask adds a folder upload task (for pack transfer)
+func (m *Manager) AddUploadFolderTask(localPath, remotePath string) (*Task, error) {
+	m.tasksMutex.Lock()
+	defer m.tasksMutex.Unlock()
+
+	// Calculate total folder size
+	var totalSize int64
+	err := filepath.Walk(localPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			totalSize += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walk folder: %w", err)
+	}
+
+	task := &Task{
+		ID:         generateTaskID(),
+		Type:       TaskTypeUpload,
+		Status:     StatusPending,
+		LocalPath:  localPath,
+		RemotePath: remotePath,
+		FileSize:   totalSize, // Use total folder size for progress tracking
+	}
+	m.tasks[task.ID] = task
+
+	go m.runUploadFolderTask(task)
+	return task, nil
+}
+
 // AddCompressTask adds a compress task
 func (m *Manager) AddCompressTask(paths []string, outputPath, format string) (*Task, error) {
 	m.tasksMutex.Lock()
@@ -208,6 +243,39 @@ func (m *Manager) runUploadTask(task *Task) {
 			}
 		})
 	}
+
+	if task.Canceled.Load() {
+		task.Status = StatusCanceled
+	} else if err != nil {
+		task.Status = StatusFailed
+		task.Error = err
+	} else {
+		task.Status = StatusCompleted
+		task.Progress = 1.0
+	}
+
+	// Notify completion callback
+	if OnTaskCompleted != nil {
+		OnTaskCompleted(task)
+	}
+}
+
+// runUploadFolderTask executes a folder upload task (always uses pack transfer)
+func (m *Manager) runUploadFolderTask(task *Task) {
+	m.semaphore <- struct{}{}
+	defer func() { <-m.semaphore }()
+
+	task.Status = StatusRunning
+	_, cancel := context.WithCancel(context.Background())
+	task.CancelFunc = cancel
+
+	// Always use pack transfer for folder uploads
+	err := m.client.UploadFilePacked(task.LocalPath, task.RemotePath, m.packTransferConfig, func(written, total int64) {
+		if total > 0 {
+			task.Progress = float64(written) / float64(total)
+			task.BytesDone = written
+		}
+	})
 
 	if task.Canceled.Load() {
 		task.Status = StatusCanceled
