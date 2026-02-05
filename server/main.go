@@ -95,6 +95,8 @@ func createMainHandler(rootDir string, fileHandler *handlers.FileHandler, upload
 			fileHandler.HandleMkdir(w, r)
 		case "rename":
 			fileHandler.HandleRename(w, r)
+		case "copy":
+			fileHandler.HandleCopy(w, r)
 		case "stat":
 			fileHandler.HandleStat(w, r)
 		case "chmod":

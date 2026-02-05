@@ -841,6 +841,32 @@ func (c *Client) RenameFile(oldPath, newPath string) error {
 	return nil
 }
 
+// CopyFile copies a file or directory on the server
+func (c *Client) CopyFile(srcPath, dstPath string) error {
+	if !c.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	url := fmt.Sprintf("http://%s?action=copy&src=%s&dst=%s", c.serverAddr, url.QueryEscape(srcPath), url.QueryEscape(dstPath))
+	resp, err := c.httpClient.Post(url, "application/json", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("copy failed (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// MoveFile moves a file or directory on the server (alias for RenameFile)
+func (c *Client) MoveFile(srcPath, dstPath string) error {
+	return c.RenameFile(srcPath, dstPath)
+}
+
 // ReadFile reads a text file from the server
 func (c *Client) ReadFile(path string) (string, error) {
 	if !c.IsConnected() {

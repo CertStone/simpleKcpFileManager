@@ -184,6 +184,9 @@ type MainWindow struct {
 	sortButtons         map[string]*widget.Button
 	sortColumn          string // "name", "size", "time", "mode"
 	sortAscending       bool
+	// Clipboard for copy/cut operations
+	clipboardPath  string // Path of the file/folder in clipboard
+	clipboardIsCut bool   // true = cut (move), false = copy
 }
 
 // MainWindowConfig holds configuration for the main window

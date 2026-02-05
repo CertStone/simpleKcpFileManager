@@ -3,6 +3,7 @@ package gui
 import (
 	"fmt"
 	"log"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -103,6 +104,19 @@ func (cm *ContextMenu) ShowFileListMenu(file *kcpclient.ListItem, pos fyne.Posit
 		)
 	}
 
+	// Add copy/cut options
+	items = append(items, fyne.NewMenuItemSeparator())
+	items = append(items, fyne.NewMenuItem("Copy", func() {
+		cm.mainWindow.clipboardPath = file.Path
+		cm.mainWindow.clipboardIsCut = false
+		dialog.ShowInformation("Copied", "File copied to clipboard:\n"+file.Name, cm.mainWindow.window)
+	}))
+	items = append(items, fyne.NewMenuItem("Cut", func() {
+		cm.mainWindow.clipboardPath = file.Path
+		cm.mainWindow.clipboardIsCut = true
+		dialog.ShowInformation("Cut", "File cut to clipboard:\n"+file.Name, cm.mainWindow.window)
+	}))
+
 	// Add common options
 	items = append(items, fyne.NewMenuItemSeparator())
 	items = append(items, fyne.NewMenuItem("Copy Path", func() {
@@ -137,10 +151,23 @@ func (cm *ContextMenu) ShowBackgroundMenu(pos fyne.Position) {
 			cm.showNewFileDialog()
 		}),
 		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("Refresh", func() {
-			cm.mainWindow.refreshFileList()
-		}),
 	}
+
+	// Add paste option if clipboard has content
+	if cm.mainWindow.clipboardPath != "" {
+		pasteLabel := "Paste"
+		if cm.mainWindow.clipboardIsCut {
+			pasteLabel = "Paste (Move)"
+		}
+		items = append(items, fyne.NewMenuItem(pasteLabel, func() {
+			cm.pasteFile()
+		}))
+		items = append(items, fyne.NewMenuItemSeparator())
+	}
+
+	items = append(items, fyne.NewMenuItem("Refresh", func() {
+		cm.mainWindow.refreshFileList()
+	}))
 
 	menu := fyne.NewMenu("Options", items...)
 	popUpMenu := widget.NewPopUpMenu(menu, cm.mainWindow.window.Canvas())
@@ -240,6 +267,66 @@ func (cm *ContextMenu) showRenameDialog(file *kcpclient.ListItem) {
 
 		// Clear selection and refresh
 		cm.mainWindow.selectedFile = nil
+		cm.mainWindow.refreshFileList()
+		cm.mainWindow.directoryTree.Refresh()
+	}, cm.mainWindow.window)
+}
+
+// pasteFile pastes the file/folder from clipboard to current directory
+func (cm *ContextMenu) pasteFile() {
+	if cm.mainWindow.clipboardPath == "" {
+		dialog.ShowInformation("Paste", "Clipboard is empty", cm.mainWindow.window)
+		return
+	}
+
+	srcPath := cm.mainWindow.clipboardPath
+	srcName := path.Base(srcPath)
+
+	// Build destination path
+	var dstPath string
+	if cm.mainWindow.currentPath == "" {
+		dstPath = "/" + srcName
+	} else {
+		dstPath = "/" + cm.mainWindow.currentPath + "/" + srcName
+	}
+
+	// Check if destination already exists (optional: ask for overwrite or rename)
+	// For simplicity, we'll just proceed and let server handle conflicts
+
+	actionName := "Copy"
+	if cm.mainWindow.clipboardIsCut {
+		actionName = "Move"
+	}
+
+	// Show confirmation
+	msg := fmt.Sprintf("%s '%s' to current folder?", actionName, srcName)
+	dialog.ShowConfirm(actionName, msg, func(confirmed bool) {
+		if !confirmed {
+			return
+		}
+
+		var err error
+		if cm.mainWindow.clipboardIsCut {
+			// Move operation
+			err = cm.mainWindow.client.MoveFile(srcPath, dstPath)
+			if err == nil {
+				// Clear clipboard after successful move
+				cm.mainWindow.clipboardPath = ""
+				cm.mainWindow.clipboardIsCut = false
+			}
+		} else {
+			// Copy operation
+			err = cm.mainWindow.client.CopyFile(srcPath, dstPath)
+		}
+
+		if err != nil {
+			dialog.ShowError(err, cm.mainWindow.window)
+			return
+		}
+
+		dialog.ShowInformation("Success", fmt.Sprintf("%s completed successfully", actionName), cm.mainWindow.window)
+
+		// Refresh
 		cm.mainWindow.refreshFileList()
 		cm.mainWindow.directoryTree.Refresh()
 	}, cm.mainWindow.window)

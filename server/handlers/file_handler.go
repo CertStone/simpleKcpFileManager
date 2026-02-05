@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -254,6 +255,124 @@ func (h *FileHandler) HandleRename(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
+}
+
+// HandleCopy handles file/directory copying
+func (h *FileHandler) HandleCopy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	srcPath := r.URL.Query().Get("src")
+	dstPath := r.URL.Query().Get("dst")
+
+	if srcPath == "" || dstPath == "" {
+		http.Error(w, "Missing src or dst path", http.StatusBadRequest)
+		return
+	}
+
+	cleanSrcPath, safe := h.isPathSafe(srcPath)
+	if !safe {
+		http.Error(w, "Invalid source path", http.StatusBadRequest)
+		return
+	}
+
+	cleanDstPath, safe := h.isPathSafe(dstPath)
+	if !safe {
+		http.Error(w, "Invalid destination path", http.StatusBadRequest)
+		return
+	}
+
+	// Check if source exists
+	srcInfo, err := os.Stat(cleanSrcPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "Source not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Copy file or directory
+	if srcInfo.IsDir() {
+		err = h.copyDir(cleanSrcPath, cleanDstPath)
+	} else {
+		err = h.copyFile(cleanSrcPath, cleanDstPath)
+	}
+
+	if err != nil {
+		http.Error(w, "Failed to copy: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+}
+
+// copyFile copies a single file
+func (h *FileHandler) copyFile(src, dst string) error {
+	// Create destination directory if needed
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	// Get source file info for permissions
+	srcInfo, err := srcFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode())
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
+}
+
+// copyDir recursively copies a directory
+func (h *FileHandler) copyDir(src, dst string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	// Create destination directory
+	if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
+		return err
+	}
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			if err := h.copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := h.copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // FileStatInfo represents detailed file information
