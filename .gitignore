@@ -56,3 +56,6 @@ download/
 tmp/
 temp/
 *.tmp
+
+
+.claude/
