@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"certstone.cc/simpleKcpFileManager/server/compress"
+	"github.com/CertStone/simpleKcpFileManager/server/compress"
 )
 
 // CompressHandler handles compression and extraction operations

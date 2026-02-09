@@ -8,7 +8,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	kcpclient "certstone.cc/simpleKcpFileManager/kcpclient"
+	kcpclient "github.com/CertStone/simpleKcpFileManager/kcpclient"
 )
 
 // FileListItem represents a single file list item with tap handlers

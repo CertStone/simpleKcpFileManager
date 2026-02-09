@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"certstone.cc/simpleKcpFileManager/common"
-	"certstone.cc/simpleKcpFileManager/server/handlers"
+	"github.com/CertStone/simpleKcpFileManager/common"
+	"github.com/CertStone/simpleKcpFileManager/server/handlers"
 
 	"github.com/xtaci/kcp-go/v5"
 	"github.com/xtaci/smux"

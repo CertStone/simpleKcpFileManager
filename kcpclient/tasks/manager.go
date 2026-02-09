@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	kcpclient "certstone.cc/simpleKcpFileManager/kcpclient"
+	kcpclient "github.com/CertStone/simpleKcpFileManager/kcpclient"
 )
 
 // TaskType represents the type of task

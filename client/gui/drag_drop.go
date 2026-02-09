@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	kcpclient "certstone.cc/simpleKcpFileManager/kcpclient"
+	kcpclient "github.com/CertStone/simpleKcpFileManager/kcpclient"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"

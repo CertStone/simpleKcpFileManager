@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"certstone.cc/simpleKcpFileManager/kcpclient/tasks"
+	"github.com/CertStone/simpleKcpFileManager/kcpclient/tasks"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"

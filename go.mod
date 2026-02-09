@@ -1,4 +1,4 @@
-module certstone.cc/simpleKcpFileManager
+module github.com/CertStone/simpleKcpFileManager
 
 go 1.24.0
 

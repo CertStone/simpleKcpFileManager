@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"certstone.cc/simpleKcpFileManager/common"
+	"github.com/CertStone/simpleKcpFileManager/common"
 )
 
 // UploadHandler handles file uploads

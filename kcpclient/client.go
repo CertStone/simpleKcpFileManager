@@ -18,7 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"certstone.cc/simpleKcpFileManager/common"
+	"github.com/CertStone/simpleKcpFileManager/common"
 
 	"github.com/xtaci/kcp-go/v5"
 	"github.com/xtaci/smux"

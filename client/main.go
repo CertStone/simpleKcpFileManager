@@ -4,7 +4,7 @@ import (
 	"flag"
 	"os"
 
-	"certstone.cc/simpleKcpFileManager/client/gui"
+	"github.com/CertStone/simpleKcpFileManager/client/gui"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"

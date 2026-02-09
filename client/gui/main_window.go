@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	kcpclient "certstone.cc/simpleKcpFileManager/kcpclient"
-	"certstone.cc/simpleKcpFileManager/kcpclient/tasks"
+	kcpclient "github.com/CertStone/simpleKcpFileManager/kcpclient"
+	"github.com/CertStone/simpleKcpFileManager/kcpclient/tasks"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
